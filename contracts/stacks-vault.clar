@@ -239,3 +239,83 @@
     )
   )
 )
+
+;; Vote on a proposal using governance token weight
+(define-public (vote
+    (proposal-id uint)
+    (vote-for bool)
+  )
+  (begin
+    (try! (check-initialized))
+    (try! (validate-proposal-id proposal-id))
+    (let (
+        (proposal (unwrap! (map-get? proposals proposal-id) err-proposal-not-found))
+        (voter-power (calculate-voting-power tx-sender))
+      )
+      ;; Validate voting eligibility
+      (asserts! (> voter-power u0) err-unauthorized)
+      (asserts! (< stacks-block-height (get expires-at proposal))
+        err-proposal-expired
+      )
+      (asserts!
+        (is-none (map-get? votes {
+          proposal-id: proposal-id,
+          voter: tx-sender,
+        }))
+        err-already-voted
+      )
+      ;; Record vote
+      (map-set votes {
+        proposal-id: proposal-id,
+        voter: tx-sender,
+      }
+        vote-for
+      )
+      ;; Update vote tallies with weighted voting
+      (map-set proposals proposal-id
+        (merge proposal {
+          yes-votes: (if vote-for
+            (+ (get yes-votes proposal) voter-power)
+            (get yes-votes proposal)
+          ),
+          no-votes: (if vote-for
+            (get no-votes proposal)
+            (+ (get no-votes proposal) voter-power)
+          ),
+        })
+      )
+      (ok true)
+    )
+  )
+)
+
+;; Execute approved proposal and transfer funds
+(define-public (execute-proposal (proposal-id uint))
+  (begin
+    (try! (check-initialized))
+    (try! (validate-proposal-id proposal-id))
+    (let (
+        (proposal (unwrap! (map-get? proposals proposal-id) err-proposal-not-found))
+        (contract-balance (stx-get-balance (as-contract tx-sender)))
+      )
+      ;; Validate execution conditions
+      (asserts! (not (get executed proposal)) err-unauthorized)
+      (asserts! (>= stacks-block-height (get expires-at proposal))
+        err-proposal-expired
+      )
+      (asserts! (> (get yes-votes proposal) (get no-votes proposal))
+        err-unauthorized
+      )
+      (asserts! (>= contract-balance (get amount proposal))
+        err-insufficient-balance
+      )
+      ;; Execute fund transfer
+      (try! (as-contract (stx-transfer? (get amount proposal) (as-contract tx-sender)
+        (get target proposal)
+      )))
+      ;; Mark proposal as executed
+      (map-set proposals proposal-id (merge proposal { executed: true }))
+      (ok true)
+    )
+  )
+)
