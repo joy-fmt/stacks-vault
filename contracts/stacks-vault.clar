@@ -319,3 +319,53 @@
     )
   )
 )
+
+;; READ-ONLY FUNCTIONS
+
+;; Get governance token balance for an account
+(define-read-only (get-balance (account principal))
+  (ok (default-to u0 (map-get? balances account)))
+)
+
+;; Get total governance token supply
+(define-read-only (get-total-supply)
+  (ok (var-get total-supply))
+)
+
+;; Get proposal details by ID
+(define-read-only (get-proposal (proposal-id uint))
+  (ok (map-get? proposals proposal-id))
+)
+
+;; Get deposit information for an account
+(define-read-only (get-deposit-info (account principal))
+  (ok (map-get? deposits account))
+)
+
+;; Check if account voted on specific proposal
+(define-read-only (get-vote
+    (proposal-id uint)
+    (voter principal)
+  )
+  (ok (map-get? votes {
+    proposal-id: proposal-id,
+    voter: voter,
+  }))
+)
+
+;; Get current treasury balance
+(define-read-only (get-treasury-balance)
+  (ok (stx-get-balance (as-contract tx-sender)))
+)
+
+;; Get protocol configuration
+(define-read-only (get-protocol-info)
+  (ok {
+    initialized: (var-get initialized),
+    total-supply: (var-get total-supply),
+    minimum-deposit: (var-get minimum-deposit),
+    lock-period: (var-get lock-period),
+    proposal-count: (var-get proposal-count),
+    treasury-balance: (stx-get-balance (as-contract tx-sender)),
+  })
+)
